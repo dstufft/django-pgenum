@@ -2,6 +2,7 @@ import enum
 import re
 
 from django.db import connections
+from django.db.models import fields
 from django.db.transaction import atomic
 
 
@@ -132,3 +133,14 @@ def sync_enums(sender=None, app=None, db=None, verbosity=0, **kwargs):
                 print("Creating enum %s" % enum_cls.__enumname__)
 
             cursor.execute(*sql)
+
+
+class EnumField(fields.Field):
+
+    def __init__(self, enum, *args, **kwargs):
+        self._enum = enum
+        kwargs["choices"] = [(x.value, x.display) for x in self._enum]
+        super(EnumField, self).__init__(*args, **kwargs)
+
+    def db_type(self, connection):
+        return self._enum.__enumname__
