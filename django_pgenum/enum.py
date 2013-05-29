@@ -1,9 +1,15 @@
 import enum
 import re
+import pickle
 
 from django.db import connections
 from django.db.models import fields
 from django.db.transaction import atomic
+
+try:
+    from south.modelsinspector import add_introspection_rules
+except ImportError:
+    add_introspection_rules = None
 
 
 def _get_db_name(class_name):
@@ -138,9 +144,28 @@ def sync_enums(sender=None, app=None, db=None, verbosity=0, **kwargs):
 class EnumField(fields.Field):
 
     def __init__(self, enum, *args, **kwargs):
-        self._enum = enum
-        kwargs["choices"] = [(x.value, x.display) for x in self._enum]
+        self.enum = enum
+        kwargs["choices"] = [(x.value, x.display) for x in self.enum]
         super(EnumField, self).__init__(*args, **kwargs)
 
     def db_type(self, connection):
-        return self._enum.__enumname__
+        return self.enum.__enumname__
+
+    def south_field_triple(self):
+        return (
+                "django_pgenum.enum.EnumField",
+                [],
+                {"enum": "pickle.loads(%s)" % pickle.dumps(self.enum)}
+            )
+
+
+# if add_introspection_rules is not None:
+#     add_introspection_rules([
+#             (
+#                 (EnumField),
+#                 [],
+#                 {"enum": ("enum", {})}
+#             )
+#         ],
+#         ["^django_pgenum\.enum\.EnumField"],
+#     )

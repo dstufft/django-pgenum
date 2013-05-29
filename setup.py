@@ -16,7 +16,7 @@ import setuptools
 
 
 setuptools.setup(
-    name="django-elephant",
+    name="django-pgenum",
     version="",
 
     #description="",
