@@ -2,7 +2,7 @@ import enum
 import re
 import pickle
 
-from django.db import connections
+from django.db import connections, models
 from django.db.models import fields
 from django.db.transaction import atomic
 
@@ -141,7 +141,7 @@ def sync_enums(sender=None, app=None, db=None, verbosity=0, **kwargs):
             cursor.execute(*sql)
 
 
-class EnumField(fields.Field):
+class EnumField(fields.Field, metaclass=models.SubfieldBase):
 
     def __init__(self, enum, *args, **kwargs):
         self.enum = enum
@@ -151,21 +151,24 @@ class EnumField(fields.Field):
     def db_type(self, connection):
         return self.enum.__enumname__
 
+    def to_python(self, value):
+        if isinstance(value, self.enum):
+            return value
+
+        if value is None:
+            return value
+
+        return self.enum[value]
+
+    def get_prep_value(self, obj):
+        return obj.value
+
+    def value_to_string(self, obj):
+        return obj.value
+
     def south_field_triple(self):
         return (
                 "django_pgenum.enum.EnumField",
                 [],
                 {"enum": "pickle.loads(%s)" % pickle.dumps(self.enum)}
             )
-
-
-# if add_introspection_rules is not None:
-#     add_introspection_rules([
-#             (
-#                 (EnumField),
-#                 [],
-#                 {"enum": ("enum", {})}
-#             )
-#         ],
-#         ["^django_pgenum\.enum\.EnumField"],
-#     )
