@@ -2,7 +2,9 @@ import enum
 import re
 import pickle
 
-from django.db import connections, models
+from django import forms
+from django.core import exceptions
+from django.db import connection, connections, models
 from django.db.models import fields
 from django.db.transaction import atomic
 
@@ -166,9 +168,61 @@ class EnumField(fields.Field, metaclass=models.SubfieldBase):
     def value_to_string(self, obj):
         return obj.value
 
+    def get_default(self):
+        if self.has_default():
+            if callable(self.default):
+                return self.default()
+            return self.default
+        if (not self.empty_strings_allowed or (self.null and
+                   not connection.features.interprets_empty_strings_as_nulls)):
+            return None
+        return ""
+
+    def validate(self, value, model_instance):
+        """
+        Validates value and throws ValidationError. Subclasses should override
+        this to provide validation logic.
+        """
+        if not self.editable:
+            # Skip validation for non-editable fields.
+            return
+
+        if self._choices and value not in self.empty_values:
+            if isinstance(value, self.enum):
+                return
+            msg = self.error_messages['invalid_choice'] % value
+            raise exceptions.ValidationError(msg)
+
+        if value is None and not self.null:
+            raise exceptions.ValidationError(self.error_messages['null'])
+
+        if not self.blank and value in self.empty_values:
+            raise exceptions.ValidationError(self.error_messages['blank'])
+
     def south_field_triple(self):
         return (
                 "django_pgenum.enum.EnumField",
                 [],
                 {"enum": "pickle.loads(%s)" % pickle.dumps(self.enum)}
             )
+
+
+class EnumFormField(forms.ChoiceField):
+
+    def __init__(self, enum, **kwargs):
+        self.enum = enum
+        kwargs["choices"] = [(x.value, x.display) for x in self.enum]
+        super(EnumFormField, self).__init__(**kwargs)
+
+    def valid_value(self, value):
+        if isinstance(value, self.enum):
+            return True
+        return super(EnumFormField, self).valid_value(value)
+
+    def prepare_value(self, value):
+        if isinstance(value, self.enum):
+            return value.value
+        return value
+
+    def to_python(self, value):
+        return self.enum[value]
